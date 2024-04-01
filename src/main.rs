@@ -33,7 +33,7 @@ fn main() {
     let start_time = Instant::now();
 
     let mut solver = Solver::new(nodes, n);
-    solver.solve(start_time, 4950_u128);
+    solver.solve(&start_time, 4950_u128);
 
     solver.show_solution();
 }

@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use rand::Rng;
+use rand::{seq::SliceRandom, Rng};
 
 pub const MAX_NODES: usize = 250;
 
@@ -46,26 +46,31 @@ impl Solver {
         eprintln!("Score: {}", self.score)
     }
 
-    pub fn solve(&mut self, duration: Instant, max_duration: u128) {
+    pub fn solve(&mut self, duration: &Instant, max_duration: u128) {
         self.set_initial_path();
+        eprintln!(
+            "Initial score: {} ({})",
+            self.score,
+            duration.elapsed().as_millis()
+        );
 
-        let mut rng = rand::thread_rng();
-        while duration.elapsed().as_millis() < max_duration {
-            let i = rng.gen_range(1..self.n - 1);
-            let j = rng.gen_range(i + 1..self.n);
+        self.run_annealing(duration, 100);
+        eprintln!("Score after annealing: {}", self.score);
 
-            let mut new_score = self.score;
-            new_score -= self.distance[self.path[i - 1]][self.path[i]];
-            new_score -= self.distance[self.path[j]][self.path[j + 1]];
-            new_score += self.distance[self.path[i - 1]][self.path[j]];
-            new_score += self.distance[self.path[i]][self.path[j + 1]];
-
-            if new_score < self.score {
-                self.score = new_score;
-                self.path[i..=j].reverse();
-                eprintln!("New score: {}", self.score);
-            }
-        }
+        self.run_two_opt();
+        eprintln!(
+            "Score after 2-opt: {} ({})",
+            self.score,
+            duration.elapsed().as_millis()
+        );
+        self.run_three_opt();
+        eprintln!(
+            "Score after 3-opt: {} ({})",
+            self.score,
+            duration.elapsed().as_millis()
+        );
+        // self.run_annealing(duration, max_duration, false);
+        // eprintln!("Score after final annealing: {}", self.score)
     }
 
     fn build_pairwise_matrix(&mut self) {
@@ -86,14 +91,14 @@ impl Solver {
         // Set the initial path to be the order of the nodes
 
         let mut visited: [bool; MAX_NODES] = [false; MAX_NODES];
-        let mut current_node: usize = 0;
         visited[0] = true;
+        let mut current_node: usize = 0;
 
         for i in 1..self.n {
             let mut closest_node: usize = 0;
             let mut closest_distance: f32 = 10000000.0;
 
-            for j in 0..self.n {
+            for j in 1..self.n {
                 if !visited[j] && self.distance[current_node][j] < closest_distance {
                     closest_node = j;
                     closest_distance = self.distance[current_node][j];
@@ -104,9 +109,136 @@ impl Solver {
             visited[current_node] = true;
 
             self.path[i] = closest_node;
-            self.score += closest_distance;
         }
 
-        self.score += self.distance[current_node][0];
+        self.score = self.get_distance(&self.path[..self.n + 1]);
+    }
+
+    fn get_distance(&self, path: &[usize]) -> f32 {
+        // Calculate the total distance of a path
+        path.iter()
+            .zip(self.path.iter().skip(1))
+            .map(|(&a, &b)| self.distance[a][b])
+            .sum()
+    }
+
+    fn run_annealing(&mut self, duration: &Instant, max_duration: u128) {
+        if self.n <= 10 {
+            return;
+        }
+
+        let mut temp = vec![0; self.n + 1];
+        let mut rng = rand::thread_rng();
+        while (duration.elapsed().as_millis() < max_duration) {
+            // generate a new solution by swapping two random nodes in the path
+            let width = rng.gen_range(4..10);
+            let start_idx = rng.gen_range(1..self.n - width);
+
+            temp.copy_from_slice(&self.path[..self.n + 1]);
+            temp[start_idx..start_idx + width].shuffle(&mut rng);
+
+            let new_cost: f32 = self.get_distance(&temp);
+
+            let cost_change = new_cost - self.score;
+
+            if cost_change < -0.01 {
+                self.path[0..self.n + 1].copy_from_slice(&temp);
+                self.score = new_cost;
+            }
+        }
+    }
+
+    fn run_two_opt(&mut self) {
+        let mut improved = true;
+        while improved {
+            improved = false;
+            for i in 1..self.n - 1 {
+                for j in (i + 2)..self.n + 1 {
+                    let cost_change = self.distance[self.path[i - 1]][self.path[j - 1]]
+                        + self.distance[self.path[i]][self.path[j]]
+                        - self.distance[self.path[i - 1]][self.path[i]]
+                        - self.distance[self.path[j - 1]][self.path[j]];
+
+                    if cost_change < -0.01 {
+                        self.score += cost_change;
+                        self.path[i..j].reverse();
+                        improved = true;
+                    }
+                }
+            }
+        }
+    }
+
+    fn run_three_opt(&mut self) {
+        let mut temp = vec![0; MAX_NODES + 1];
+        for i in 1..self.n - 3 {
+            for j in i + 2..self.n - 1 {
+                for k in j + 2..self.n {
+                    let (a, b, c, d, e, f) = (
+                        self.path[i - 1],
+                        self.path[i],
+                        self.path[j - 1],
+                        self.path[j],
+                        self.path[k - 1],
+                        self.path[k],
+                    );
+
+                    let (d0, d1, d2, d3, d4) = (
+                        self.distance[a][b] + self.distance[c][d] + self.distance[e][f],
+                        self.distance[a][c] + self.distance[b][d] + self.distance[e][f],
+                        self.distance[a][b] + self.distance[c][e] + self.distance[d][f],
+                        self.distance[a][d] + self.distance[e][b] + self.distance[c][f],
+                        self.distance[f][b] + self.distance[c][d] + self.distance[e][a],
+                    );
+
+                    if d0 > d1 {
+                        self.path[i..j].reverse();
+                        self.score += d1 - d0;
+                    } else if d0 > d2 {
+                        self.path[j..k].reverse();
+                        self.score += d2 - d0;
+                    } else if d0 > d4 {
+                        self.path[i..k].reverse();
+                        self.score += d4 - d0;
+                    } else if d0 > d3 {
+                        temp.copy_from_slice(&self.path);
+                        self.path[i..i + k - j].copy_from_slice(&temp[j..k]);
+                        self.path[i + k - j..k].copy_from_slice(&temp[i..j]);
+                        self.score += d3 - d0;
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_debug() {
+        let mut a = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        a[3..6].reverse();
+        assert_eq!(a, [0, 1, 2, 5, 4, 3, 6, 7, 8, 9]);
+    }
+
+    #[test]
+    fn test_array_swap() {
+        let mut rng = rand::thread_rng();
+        let mut a = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+        let start_idx = 2;
+        let width = 3;
+        let n = 8;
+
+        let mut temp = vec![0; n];
+
+        temp.copy_from_slice(&a[..n]);
+        temp[start_idx..start_idx + width].shuffle(&mut rng);
+        println!("{:?}", a);
+
+        a[0..n].copy_from_slice(&temp);
+        println!("{:?}", a);
     }
 }
