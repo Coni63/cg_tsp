@@ -54,8 +54,8 @@ impl Solver {
             duration.elapsed().as_millis()
         );
 
-        self.run_annealing(duration, 100);
-        eprintln!("Score after annealing: {}", self.score);
+        self.run_annealing(duration, 2000);
+        eprintln!("Score after first annealing: {}", self.score);
 
         self.run_two_opt();
         eprintln!(
@@ -69,8 +69,9 @@ impl Solver {
             self.score,
             duration.elapsed().as_millis()
         );
-        // self.run_annealing(duration, max_duration, false);
-        // eprintln!("Score after final annealing: {}", self.score)
+
+        self.run_annealing(duration, max_duration);
+        eprintln!("Score after annealing: {}", self.score);
     }
 
     fn build_pairwise_matrix(&mut self) {
@@ -117,34 +118,71 @@ impl Solver {
     fn get_distance(&self, path: &[usize]) -> f32 {
         // Calculate the total distance of a path
         path.iter()
-            .zip(self.path.iter().skip(1))
+            .zip(path.iter().skip(1))
             .map(|(&a, &b)| self.distance[a][b])
             .sum()
     }
 
     fn run_annealing(&mut self, duration: &Instant, max_duration: u128) {
-        if self.n <= 10 {
+        if (self.n <= 10) {
             return;
         }
 
-        let mut temp = vec![0; self.n + 1];
+        let mut best_candidate = vec![0; self.n + 1];
+        best_candidate.copy_from_slice(&self.path[..self.n + 1]);
+
+        let mut annealing_candidate = self.tweak_candidate(&best_candidate);
+        let mut annealing_score = self.get_distance(&annealing_candidate);
+
         let mut rng = rand::thread_rng();
-        while (duration.elapsed().as_millis() < max_duration) {
-            // generate a new solution by swapping two random nodes in the path
-            let width = rng.gen_range(4..10);
-            let start_idx = rng.gen_range(1..self.n - width);
+        loop {
+            let portion_elapsed = (duration.elapsed().as_millis() as f64 / max_duration as f64);
 
-            temp.copy_from_slice(&self.path[..self.n + 1]);
-            temp[start_idx..start_idx + width].shuffle(&mut rng);
-
-            let new_cost: f32 = self.get_distance(&temp);
-
-            let cost_change = new_cost - self.score;
-
-            if cost_change < -0.01 {
-                self.path[0..self.n + 1].copy_from_slice(&temp);
-                self.score = new_cost;
+            if portion_elapsed >= 1.0 {
+                break;
             }
+
+            let next_candidate = self.tweak_candidate(&annealing_candidate);
+            let next_score = self.get_distance(&next_candidate);
+
+            let next_is_better = next_score < annealing_score;
+            let replacement_threshold = 0.5 * 1.0f64.exp().powf(-10.0 * portion_elapsed.powf(3.0));
+
+            if next_is_better || (rng.gen_range(0.0..1.0) < replacement_threshold) {
+                annealing_candidate = next_candidate;
+                annealing_score = next_score;
+            }
+
+            if annealing_score < self.score {
+                eprintln!("New best score: {}", annealing_score);
+                self.path[..self.n + 1].copy_from_slice(&annealing_candidate);
+                self.score = annealing_score;
+            }
+        }
+    }
+
+    fn tweak_candidate(&self, candidate: &[usize]) -> Vec<usize> {
+        let mut rng = rand::thread_rng();
+
+        loop {
+            let width = rng.gen_range(3..10);
+            let start = rng.gen_range(1..self.n - width);
+            let end = start + width;
+
+            if start == end {
+                continue;
+            }
+
+            let (start, end) = if start < end {
+                (start, end)
+            } else {
+                (end, start)
+            };
+            let mut ans = vec![0; self.n + 1];
+            ans.copy_from_slice(candidate);
+            ans[start..end].shuffle(&mut rng);
+
+            return ans;
         }
     }
 
@@ -199,7 +237,6 @@ impl Solver {
                         self.score += d2 - d0;
                     } else if d0 > d4 {
                         self.path[i..k].reverse();
-                        self.score += d4 - d0;
                     } else if d0 > d3 {
                         temp.copy_from_slice(&self.path);
                         self.path[i..i + k - j].copy_from_slice(&temp[j..k]);
@@ -240,5 +277,13 @@ mod tests {
 
         a[0..n].copy_from_slice(&temp);
         println!("{:?}", a);
+    }
+
+    #[test]
+    fn test_tweak_candidate() {
+        let solver = Solver::new([[0; 2]; 250], 5);
+        let candidate = vec![0, 1, 2, 3, 4, 0];
+        let tweaked = solver.tweak_candidate(&candidate);
+        println!("{:?}", tweaked);
     }
 }
