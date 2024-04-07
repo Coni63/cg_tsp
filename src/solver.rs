@@ -1,7 +1,5 @@
 use std::time::Instant;
 
-use rand::{seq::SliceRandom, Rng};
-
 pub const MAX_NODES: usize = 250;
 
 pub struct Solver {
@@ -46,7 +44,7 @@ impl Solver {
         eprintln!("Score: {}", self.score)
     }
 
-    pub fn solve(&mut self, duration: &Instant, max_duration: u128) {
+    pub fn solve(&mut self, duration: &Instant) {
         self.set_initial_path();
         eprintln!(
             "Initial score: {} ({})",
