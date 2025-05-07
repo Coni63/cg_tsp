@@ -1,0 +1,9 @@
+{
+  "title": {
+    "2": "5 Nodes",
+    "1": "5 noeuds"
+  },
+  "testIn": "5\n485 475\n1150 750\n1008 480\n1562 134\n1155 523",
+  "isTest": "true",
+  "isValidator": "false"
+}
