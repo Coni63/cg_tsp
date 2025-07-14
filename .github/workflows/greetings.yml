@@ -1,0 +1,12 @@
+name: Greetings
+run-name: Say hello to contributor
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  greet:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'say hi'
+        run: echo "Hello ${{ github.actor }}"
