@@ -1,6 +1,6 @@
 name: Build
 run-name: Build solver
-on: [pull-request]
+on: [pull_request]
 
 jobs:
   build:
