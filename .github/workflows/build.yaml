@@ -24,3 +24,4 @@ jobs:
         with:
           name: solver
           path: target/release/cg_tsp
+          if-no-files-found: error
