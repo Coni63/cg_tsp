@@ -18,9 +18,9 @@ jobs:
           command: build
           args: --release --all-features
 
-      - run: ls -al target
+      - run: ls -al target/release
 
       - uses: actions/upload-artifact@v4
         with:
           name: solver
-          path: target/cg_tsp.exe
+          path: target/release/cg_tsp.exe
